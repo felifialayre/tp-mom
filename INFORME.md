@@ -2,11 +2,6 @@
 
 ## Clase base compartida
 
-`Queue` y `Exchange` comparten la lógica de conexión, consumo y cierre en un mixin
-`_RabbitMQBase`. Cada clase concreta define únicamente lo que las diferencia: el
-`declare` de su topología, el ruteo del `send` y (en el caso del exchange) el `bind`.
-Se evita así duplicar el manejo de errores y el ciclo de vida de la conexión.
-
 Siendo que `Queue` y `Exchange` comparten gran parte de la lógica en momentos como el cierre de conexión (`close()`), el comienzo de consumisión (`start_consuming()`) se decidió de implementar una clase base `_RabbitMQBase` para no repetir código entre los distintos modelos de comunicación.
 
 ## Configuración diferida al `start_consuming`
