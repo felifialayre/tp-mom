@@ -1,32 +1,26 @@
 import pika
 import random
 import string
-from .middleware import MessageMiddlewareQueue, MessageMiddlewareExchange
+from .middleware import MessageMiddlewareQueue, MessageMiddlewareExchange, MessageMiddlewareMessageError, MessageMiddlewareDisconnectedError, MessageMiddlewareCloseError
 
 class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
 
     def __init__(self, host, queue_name):
-        # TODO: manejo de errores
-        connection = pika.BlockingConnection(pika.ConnectionParameters(host))
-        channel = connection.channel()
-        channel.queue_declare(queue=queue_name, durable=True)
+        try:
+            connection = pika.BlockingConnection(pika.ConnectionParameters(host))
+            channel = connection.channel()
+            channel.queue_declare(queue=queue_name, durable=True)
+        except pika.exceptions.AMQPConnectionError:
+            raise MessageMiddlewareDisconnectedError(f"Not able to connect to {host}")
+        except pika.exceptions.AMQPError:
+            raise MessageMiddlewareMessageError(f"Not able to declare queue: '{queue_name}'")
 
         self.connection = connection
         self.channel = channel
         self.queue_name = queue_name
         self.consumer_tag = None
-        
-    #Comienza a escuchar a la cola/exchange e invoca a on_message_callback tras
-	#cada mensaje de datos o de control con el cuerpo del mensaje.
-	# on_message_callback tiene como parámetros:
-	# message - El valor tal y como lo recibe el método send de esta clase.
-	# ack - Función que al invocarse realiza ack al mensaje que se está consumiendo.
-	# nack - Función que al invocarse realiza nack al mensaje que se está consumiendo. 
-	#Si se pierde la conexión con el middleware eleva MessageMiddlewareDisconnectedError.
-	#Si ocurre un error interno que no puede resolverse eleva MessageMiddlewareMessageError.
+
     def start_consuming(self, on_message_callback):
-        #TODO: manejo de errores
-        self.channel.basic_qos(prefetch_count=1)
         def callback(ch, method, _properties, body):
 
             def ack():
@@ -37,36 +31,46 @@ class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
 
             return on_message_callback(body, ack, nack)
 
-        self.consumer_tag = self.channel.basic_consume(queue=self.queue_name, on_message_callback=callback)
-
-        self.channel.start_consuming()
+        try:
+            self.channel.basic_qos(prefetch_count=1)
+            self.consumer_tag = self.channel.basic_consume(queue=self.queue_name, on_message_callback=callback)
+            self.channel.start_consuming()
+        except pika.exceptions.AMQPConnectionError:
+            raise MessageMiddlewareDisconnectedError(f"Connection lost while consuming from {self.queue_name}")
+        except pika.exceptions.AMQPError:
+            raise MessageMiddlewareMessageError(f"Error while consuming from queue '{self.queue_name}'")
 	
-	#Si se estaba consumiendo desde la cola/exchange, se detiene la escucha. Si
-	#no se estaba consumiendo de la cola/exchange, no tiene efecto, ni levanta
-	#Si se pierde la conexión con el middleware eleva MessageMiddlewareDisconnectedError.
     def stop_consuming(self):
-        #TODO: manejo de errores
         if not self.consumer_tag:
             return
 
-        self.channel.stop_consuming(consumer_tag=self.consumer_tag)
+        try:
+            self.channel.stop_consuming(consumer_tag=self.consumer_tag)
+        except pika.exceptions.AMQPConnectionError:
+            raise MessageMiddlewareDisconnectedError(f"Connection lost while stop consuming from '{self.queue_name}'")
+        except pika.exceptions.AMQPError:
+            raise MessageMiddlewareMessageError(f"Error while stop consuming from '{self.queue_name}'")
+
         self.consumer_tag = None
 
-	#Envía un mensaje a la cola o al tópico con el que se inicializó el exchange.
-	#Si se pierde la conexión con el middleware eleva MessageMiddlewareDisconnectedError.
-	#Si ocurre un error interno que no puede resolverse eleva MessageMiddlewareMessageError.
     def send(self, message):
-        #TODO: manejo de errores
-        self.channel.basic_publish(
-            exchange='',
-            body=message,
-            routing_key=self.queue_name
-        )
+        try:
+            self.channel.basic_publish(
+                exchange='',
+                body=message,
+                routing_key=self.queue_name
+            )
+        except pika.exceptions.AMQPConnectionError:
+            raise MessageMiddlewareDisconnectedError(f"Connection lost while sending to '{self.queue_name}'")
+        except pika.exceptions.AMQPError:
+            raise MessageMiddlewareMessageError(f"Error while sending to '{self.queue_name}'")
 
-    #Se desconecta de la cola o exchange al que estaba conectado.
-    #Si ocurre un error interno que no puede resolverse eleva MessageMiddlewareCloseError.
     def close(self):
-        self.connection.close()
+        try:
+            self.connection.close()
+        except pika.exceptions.AMQPError:
+            # close no idempotente -> si cierro algo ya cerrado explota
+            raise MessageMiddlewareCloseError("Error while closing connection")
 
 class MessageMiddlewareExchangeRabbitMQ(MessageMiddlewareExchange):
     
