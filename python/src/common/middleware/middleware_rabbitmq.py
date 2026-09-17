@@ -88,7 +88,8 @@ class MessageMiddlewareQueueRabbitMQ(_RabbitMQBase, MessageMiddlewareQueue):
             self.channel.basic_publish(
                 exchange='',
                 body=message,
-                routing_key=self.queue_name
+                routing_key=self.queue_name,
+                properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent)
             )
         except pika.exceptions.AMQPConnectionError as e:
             raise MessageMiddlewareDisconnectedError(f"Connection lost while sending to '{self.queue_name}'") from e
