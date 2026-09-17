@@ -26,7 +26,7 @@ class _RabbitMQBase:
         self.channel = channel
         self.consumer_tag = None
 
-    def _consume(self, on_message_callback, prefetch_count=0):
+    def _consume(self, on_message_callback, prefetch_count=None):
         def callback(ch, method, _properties, body):
 
             def ack():
@@ -38,7 +38,8 @@ class _RabbitMQBase:
             return on_message_callback(body, ack, nack)
 
         try:
-            self.channel.basic_qos(prefetch_count=prefetch_count)
+            if prefetch_count:
+                self.channel.basic_qos(prefetch_count=prefetch_count)
             self.consumer_tag = self.channel.basic_consume(queue=self.queue_name, on_message_callback=callback)
             self.channel.start_consuming()
         except pika.exceptions.AMQPConnectionError as e:
@@ -131,8 +132,7 @@ class MessageMiddlewareExchangeRabbitMQ(_RabbitMQBase, MessageMiddlewareExchange
                 self.channel.basic_publish(
                     exchange=self.exchange_name,
                     body=message,
-                    routing_key=key,
-                    properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent)
+                    routing_key=key
                 )
         except pika.exceptions.AMQPConnectionError as e:
             raise MessageMiddlewareDisconnectedError(f"Connection lost while sending to '{self.queue_name}'") from e

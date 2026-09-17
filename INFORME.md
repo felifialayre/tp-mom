@@ -25,7 +25,7 @@ El `basic_qos` (prefetch) y el `queue_bind` de las routing keys se aplican reci�
 ## Colas: durable vs. exclusive
 
 - **Work queue**: se declara `durable=True`. Es un recurso compartido y con nombre fijo
-  que debe persistir independientemente de las conexiones (varios productores/consumidores podrían potencialmente usarla).
+  que debe persistir independientemente de las conexiones (varios productores/consumidores podrían potencialmente usarla). Los mensajes enviados también serán persistentes haciendo así que si no hay workers consumiendo las _tareas_ al reconectarse puedan seguir trabajando.
 - **Cola del exchange (consumidor)**: se declara anónima (`queue=''`) y `exclusive=True`.
   Es privada de cada consumidor y RabbitMQ la elimina automáticamente al cerrarse la
   conexión que la creó, evitando dejar colas huérfanas en el broker.
